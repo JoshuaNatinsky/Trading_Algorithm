@@ -17,6 +17,7 @@ class BuyTheDip(QCAlgorithm):
         self.high_after_purchase = None
         self.purchase_price = None
         self.trailing_stop_loss_percentage = 0.05
+        self.profit_target_percentage = 0.10  # 10% profit target
 
     def OnData(self, data):
         if not data.Bars.ContainsKey(self.symbol) or not data[self.symbol]:
@@ -40,7 +41,7 @@ class BuyTheDip(QCAlgorithm):
         if price < previous_close * 0.97:
             # Buy NVDA
             if not self.Portfolio[self.symbol].Invested:
-                self.SetHoldings(self.symbol, 1)
+                self.SetHoldings(self.symbol, 1) #Use 100% of availabe cach to buy NVDA
                 self.purchase_price = price
                 self.high_after_purchase = price
                 self.Debug(f"Bought NVDA at {price}")
@@ -60,6 +61,14 @@ class BuyTheDip(QCAlgorithm):
                 self.purchase_price = None
                 self.high_after_purchase = None
                 self.Debug(f"Sold NVDA at {price} due to trailing stop loss")
+
+            # Check if the stock has increased by 10% from the purchase price
+            if self.purchase_price is not None and price >= self.purchase_price * (1 + self.profit_target_percentage):
+                self.Liquidate(self.symbol)
+                self.purchase_price = None
+                self.high_after_purchase = None
+                self.Debug(f"Sold NVDA at {price} due to reaching the 10% profit target")
+
 
     def OnEndOfDay(self):
         # Log the current portfolio value at the end of each day
