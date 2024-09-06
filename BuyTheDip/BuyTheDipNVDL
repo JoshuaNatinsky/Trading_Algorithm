@@ -1,0 +1,75 @@
+# region imports
+from AlgorithmImports import *
+# endregion
+class BuyTheDip(QCAlgorithm):
+    def Initialize(self):
+        # Set start and end dates for the backtest
+        self.SetStartDate(2020, 1, 1)
+        self.SetEndDate(2024, 7, 1)
+        
+        # Set the initial cash
+        self.SetCash(100000)
+        
+        # Add the NVDL stock to the algorithm
+        self.symbol = self.AddEquity("NVDL", Resolution.Daily).Symbol
+        
+        # Variables to track the purchase and trailing stop
+        self.high_after_purchase = None
+        self.purchase_price = None
+        self.trailing_stop_loss_percentage = 0.05
+        self.profit_target_percentage = 0.10  # 10% profit target
+
+    def OnData(self, data):
+        if not data.Bars.ContainsKey(self.symbol) or not data[self.symbol]:
+            return
+        
+        price = data[self.symbol].Close
+
+        if not data.ContainsKey(self.symbol):
+            return
+        
+        price = data[self.symbol].Close
+        historical = self.History(self.symbol, 2, Resolution.Daily)
+        
+        if len(historical) < 2:
+            return
+        
+        # Get the previous day's close
+        previous_close = historical.iloc[-2]['close']
+        
+        # Check if NVDL has dropped more than 3% from the previous close
+        if price < previous_close * 0.97:
+            # Buy NVDL
+            if not self.Portfolio[self.symbol].Invested:
+                self.SetHoldings(self.symbol, 1) #Use 100% of availabe cach to buy NVDL
+                self.purchase_price = price
+                self.high_after_purchase = price
+                self.Debug(f"Bought NVDL at {price}")
+        
+        # If the stock is held, update the high price and check for trailing stop loss
+        if self.Portfolio[self.symbol].Invested:
+            # Update the highest price after purchase
+            if price > self.high_after_purchase:
+                self.high_after_purchase = price
+            
+            # Calculate the trailing stop loss price
+            trailing_stop_loss_price = self.high_after_purchase * (1 - self.trailing_stop_loss_percentage)
+            
+            # Sell if the price falls below the trailing stop loss price
+            if price < trailing_stop_loss_price:
+                self.Liquidate(self.symbol)
+                self.purchase_price = None
+                self.high_after_purchase = None
+                self.Debug(f"Sold NVDL at {price} due to trailing stop loss")
+
+            # Check if the stock has increased by 10% from the purchase price
+            if self.purchase_price is not None and price >= self.purchase_price * (1 + self.profit_target_percentage):
+                self.Liquidate(self.symbol)
+                self.purchase_price = None
+                self.high_after_purchase = None
+                self.Debug(f"Sold NVDL at {price} due to reaching the 10% profit target")
+
+
+    def OnEndOfDay(self):
+        # Log the current portfolio value at the end of each day
+        self.Debug(f"End of day portfolio value: {self.Portfolio.TotalPortfolioValue}")
