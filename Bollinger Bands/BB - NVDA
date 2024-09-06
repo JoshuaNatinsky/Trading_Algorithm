@@ -1,0 +1,48 @@
+from AlgorithmImports import *
+
+class BollingerBandStrategy(QCAlgorithm):
+    def Initialize(self):
+        # Set start and end dates for the backtest
+        self.SetStartDate(2020, 1, 1)
+        self.SetEndDate(2024, 7, 1)
+        
+        # Set initial cash
+        self.SetCash(100000)
+        
+        # Add the NVDA stock to the algorithm
+        self.symbol = self.AddEquity("NVDA", Resolution.Minute).Symbol
+        
+        # Set up Bollinger Bands with 20-period moving average and 2 standard deviations
+        self.bollinger = self.BB(self.symbol, 20, 2, MovingAverageType.Simple, Resolution.Minute)
+        
+        # Track whether we are invested in the stock
+        self.is_invested = False
+
+    def OnData(self, data):
+        # Ensure there is valid data and Bollinger Bands are ready
+        if not data.ContainsKey(self.symbol) or not self.bollinger.IsReady:
+            return
+
+        if not data.ContainsKey(self.symbol) or not data[self.symbol] or not data[self.symbol].Close:
+            return
+
+        # Get the closing price of NVDA
+        price = data[self.symbol].Close
+        
+        # Get the upper and lower Bollinger Bands
+        upper_band = self.bollinger.UpperBand.Current.Value
+        lower_band = self.bollinger.LowerBand.Current.Value
+        
+        # Buy when the price crosses above the upper Bollinger Band
+        if price > upper_band and not self.Portfolio[self.symbol].Invested:
+            self.SetHoldings(self.symbol, 1)  # Buy 100% of available cash into NVDA
+            self.Debug(f"Bought NVDA at {price}, Upper Band: {upper_band}")
+        
+        # Sell when the price crosses below the lower Bollinger Band
+        elif price < lower_band and self.Portfolio[self.symbol].Invested:
+            self.Liquidate(self.symbol)  # Sell all NVDA shares
+            self.Debug(f"Sold NVDA at {price}, Lower Band: {lower_band}")
+
+    def OnEndOfDay(self):
+        # Log the current portfolio value at the end of each day
+        self.Debug(f"End of day portfolio value: {self.Portfolio.TotalPortfolioValue}")
