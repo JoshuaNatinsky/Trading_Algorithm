@@ -1,47 +1,74 @@
+# region imports
 from AlgorithmImports import *
-
-class BollingerBandStrategy(QCAlgorithm):
+# endregion
+class BuyTheDip(QCAlgorithm):
     def Initialize(self):
         # Set start and end dates for the backtest
         self.SetStartDate(2020, 1, 1)
         self.SetEndDate(2024, 7, 1)
         
-        # Set initial cash
+        # Set the initial cash
         self.SetCash(100000)
         
-        # Add the NVDA stock to the algorithm
-        self.symbol = self.AddEquity("NVDA", Resolution.Minute).Symbol
+        # Add the LULU stock to the algorithm
+        self.symbol = self.AddEquity("LULU", Resolution.Daily).Symbol
         
-        # Set up Bollinger Bands with 20-period moving average and 2 standard deviations
-        self.bollinger = self.BB(self.symbol, 20, 2, MovingAverageType.Simple, Resolution.Minute)
-        
-        # Track whether we are invested in the stock
-        self.is_invested = False
+        # Variables to track the purchase and trailing stop
+        self.high_after_purchase = None
+        self.purchase_price = None
+        self.trailing_stop_loss_percentage = 0.04
+        self.profit_target_percentage = 0.08  # 8% profit target
 
     def OnData(self, data):
-        # Ensure there is valid data and Bollinger Bands are ready
-        if not data.ContainsKey(self.symbol) or not self.bollinger.IsReady:
+        if not data.Bars.ContainsKey(self.symbol) or not data[self.symbol]:
             return
-
-        if not data.ContainsKey(self.symbol) or not data[self.symbol] or not data[self.symbol].Close:
-            return
-
-        # Get the closing price of NVDA
+        
         price = data[self.symbol].Close
+
+        if not data.ContainsKey(self.symbol):
+            return
         
-        # Get the upper and lower Bollinger Bands
-        upper_band = self.bollinger.UpperBand.Current.Value
-        lower_band = self.bollinger.LowerBand.Current.Value
+        price = data[self.symbol].Close
+        historical = self.History(self.symbol, 2, Resolution.Daily)
         
-        # Buy when the price crosses above the upper Bollinger Band
-        if price > upper_band and not self.Portfolio[self.symbol].Invested:
-            self.SetHoldings(self.symbol, 1)  # Buy 100% of available cash into NVDA
-            self.Debug(f"Bought NVDA at {price}, Upper Band: {upper_band}")
+        if len(historical) < 2:
+            return
         
-        # Sell when the price crosses below the lower Bollinger Band
-        elif price < lower_band and self.Portfolio[self.symbol].Invested:
-            self.Liquidate(self.symbol)  # Sell all NVDA shares
-            self.Debug(f"Sold NVDA at {price}, Lower Band: {lower_band}")
+        # Get the previous day's close
+        previous_close = historical.iloc[-2]['close']
+        
+        # Check if LULU has dropped more than 3% from the previous close
+        if price < previous_close * 0.97:
+            # Buy LULU
+            if not self.Portfolio[self.symbol].Invested:
+                self.SetHoldings(self.symbol, 1) #Use 100% of availabe cach to buy LULU
+                self.purchase_price = price
+                self.high_after_purchase = price
+                self.Debug(f"Bought LULU at {price}")
+        
+        # If the stock is held, update the high price and check for trailing stop loss
+        if self.Portfolio[self.symbol].Invested:
+            # Update the highest price after purchase
+            if price > self.high_after_purchase:
+                self.high_after_purchase = price
+            
+            # Calculate the trailing stop loss price
+            trailing_stop_loss_price = self.high_after_purchase * (1 - self.trailing_stop_loss_percentage)
+            
+            # Sell if the price falls below the trailing stop loss price
+            if price < trailing_stop_loss_price:
+                self.Liquidate(self.symbol)
+                self.purchase_price = None
+                self.high_after_purchase = None
+                self.Debug(f"Sold LULU at {price} due to trailing stop loss")
+
+            # Check if the stock has increased by 10% from the purchase price
+            if self.purchase_price is not None and price >= self.purchase_price * (1 + self.profit_target_percentage):
+                self.Liquidate(self.symbol)
+                self.purchase_price = None
+                self.high_after_purchase = None
+                self.Debug(f"Sold LULU at {price} due to reaching the 10% profit target")
+
 
     def OnEndOfDay(self):
         # Log the current portfolio value at the end of each day
