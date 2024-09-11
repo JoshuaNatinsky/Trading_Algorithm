@@ -1,0 +1,47 @@
+from AlgorithmImports import *
+
+class DCASPY(QCAlgorithm):
+    
+    def Initialize(self):
+        # Set start and end dates for the backtest
+        self.SetStartDate(2019, 7, 1)
+        self.SetEndDate(2024, 7, 1)
+        
+        # Set the initial cash
+        self.SetCash(100000)
+        
+        # Add SPY to the algorithm and set leverage to 1 (no margin)
+        self.spy = self.AddEquity("SPY", Resolution.Daily).Symbol
+        self.Securities[self.spy].SetLeverage(1)  # No margin, 1x leverage
+        
+        # Schedule weekly buys of SPY (every Monday at market open)
+        self.Schedule.On(self.DateRules.WeekStart(self.spy, DayOfWeek.Monday), 
+                         self.TimeRules.AfterMarketOpen(self.spy, 1), 
+                         self.BuySPY)
+        
+        # Store the amount of each buy
+        self.weekly_investment = 1000
+        
+    def BuySPY(self):
+        # Check if we have enough cash to continue buying
+        if self.Portfolio.Cash < self.weekly_investment:
+            self.Debug(f"Insufficient cash. Stopping further purchases.")
+            return
+        
+        # Get the current price of SPY
+        price = self.Securities[self.spy].Price
+        
+        # Calculate how many shares to buy with $1000
+        quantity = self.weekly_investment / price
+        
+        # Place the order to buy SPY
+        self.MarketOrder(self.spy, quantity)
+        
+        self.Debug(f"Bought {quantity} shares of SPY at {price}")
+    
+    def OnData(self, data):
+        pass
+
+    def OnEndOfDay(self):
+        # Log portfolio value at the end of each day
+        self.Debug(f"End of day portfolio value: {self.Portfolio.TotalPortfolioValue}")
