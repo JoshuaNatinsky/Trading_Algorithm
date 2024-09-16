@@ -1,0 +1,54 @@
+from AlgorithmImports import *
+
+class DCAMSFTandNVDA(QCAlgorithm):
+    
+    def Initialize(self):
+        # Set start and end dates for the backtest
+        self.SetStartDate(2019, 7, 1)
+        self.SetEndDate(2024, 7, 1)
+        
+        # Set the initial cash
+        self.SetCash(100000)
+        
+        # Add MSFT and NVDA to the algorithm and set leverage to 1 (no margin)
+        self.msft = self.AddEquity("MSFT", Resolution.Daily).Symbol
+        self.nvda = self.AddEquity("NVDA", Resolution.Daily).Symbol
+        self.Securities[self.msft].SetLeverage(1)  # No margin for MSFT
+        self.Securities[self.nvda].SetLeverage(1)  # No margin for NVDA
+        
+        # Schedule weekly buys of MSFT and NVDA (every Monday at market open)
+        self.Schedule.On(self.DateRules.WeekStart(self.msft, DayOfWeek.Monday), 
+                         self.TimeRules.AfterMarketOpen(self.msft, 1), 
+                         self.BuyMSFTandNVDA)
+        
+        # Store the amount of each buy
+        self.weekly_investment_per_stock = 500  # $500 each for MSFT and NVDA
+    
+    def BuyMSFTandNVDA(self):
+        # Check if we have enough cash to continue buying both MSFT and NVDA
+        total_required_cash = self.weekly_investment_per_stock * 2
+        if self.Portfolio.Cash < total_required_cash:
+            self.Debug(f"Insufficient cash. Stopping further purchases.")
+            return
+        
+        # Get the current price of MSFT
+        msft_price = self.Securities[self.msft].Price
+        nvda_price = self.Securities[self.nvda].Price
+        
+        # Calculate how many shares to buy with $500 for MSFT and NVDA
+        msft_quantity = self.weekly_investment_per_stock / msft_price
+        nvda_quantity = self.weekly_investment_per_stock / nvda_price
+        
+        # Place the orders to buy MSFT and NVDA
+        self.MarketOrder(self.msft, msft_quantity)
+        self.MarketOrder(self.nvda, nvda_quantity)
+        
+        self.Debug(f"Bought {msft_quantity} shares of MSFT at {msft_price}")
+        self.Debug(f"Bought {nvda_quantity} shares of NVDA at {nvda_price}")
+    
+    def OnData(self, data):
+        pass
+
+    def OnEndOfDay(self):
+        # Log portfolio value at the end of each day
+        self.Debug(f"End of day portfolio value: {self.Portfolio.TotalPortfolioValue}")
