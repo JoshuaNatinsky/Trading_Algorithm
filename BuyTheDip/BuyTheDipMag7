@@ -1,0 +1,81 @@
+# region imports
+from AlgorithmImports import *
+# endregion
+class BuyTheDipMagnificent7(QCAlgorithm):
+    def Initialize(self):
+        # Set start and end dates for the backtest
+        self.SetStartDate(2019, 7, 1)
+        self.SetEndDate(2024, 7, 1)
+        
+        # Set the initial cash
+        self.SetCash(100000)
+        
+        # List of symbols in the "Magnificent 7"
+        self.symbols = [self.AddEquity("AAPL", Resolution.Daily).Symbol,
+                        self.AddEquity("AMZN", Resolution.Daily).Symbol,
+                        self.AddEquity("GOOGL", Resolution.Daily).Symbol,
+                        self.AddEquity("META", Resolution.Daily).Symbol,
+                        self.AddEquity("MSFT", Resolution.Daily).Symbol,
+                        self.AddEquity("NVDA", Resolution.Daily).Symbol,
+                        self.AddEquity("TSLA", Resolution.Daily).Symbol]
+        
+        # Set leverage to 1 (no margin) for all stocks
+        for symbol in self.symbols:
+            self.Securities[symbol].SetLeverage(1)
+        
+        # Dictionaries to track purchases and trailing stops for each stock
+        self.high_after_purchase = {symbol: None for symbol in self.symbols}
+        self.purchase_price = {symbol: None for symbol in self.symbols}
+        self.trailing_stop_loss_percentage = 0.05 # 5% trailing stop loss (to protect position)
+        self.profit_target_percentage = 0.10  # 10% profit target
+    
+    def OnData(self, data):
+        for symbol in self.symbols:
+            # Check if the data for the symbol is available
+            if not data.Bars.ContainsKey(symbol) or not data[symbol]:
+                continue
+            
+            price = data[symbol].Close
+            historical = self.History(symbol, 2, Resolution.Daily)
+            
+            if len(historical) < 2:
+                continue
+            
+            # Get the previous day's close
+            previous_close = historical.iloc[-2]['close']
+            
+            # Check if the stock has dropped more than 3% from the previous close
+            if price < previous_close * 0.97:
+                # Buy the stock if we haven't bought it yet
+                if not self.Portfolio[symbol].Invested:
+                    self.SetHoldings(symbol, 1 / len(self.symbols))  # Use equal weight for each stock
+                    self.purchase_price[symbol] = price
+                    self.high_after_purchase[symbol] = price
+                    self.Debug(f"Bought {symbol} at {price}")
+            
+            # If the stock is held, update the high price and check for trailing stop loss
+            if self.Portfolio[symbol].Invested:
+                # Update the highest price after purchase
+                if price > self.high_after_purchase[symbol]:
+                    self.high_after_purchase[symbol] = price
+                
+                # Calculate the trailing stop loss price
+                trailing_stop_loss_price = self.high_after_purchase[symbol] * (1 - self.trailing_stop_loss_percentage)
+                
+                # Sell if the price falls below the trailing stop loss price
+                if price < trailing_stop_loss_price:
+                    self.Liquidate(symbol)
+                    self.purchase_price[symbol] = None
+                    self.high_after_purchase[symbol] = None
+                    self.Debug(f"Sold {symbol} at {price} due to trailing stop loss")
+                
+                # Check if the stock has increased by 10% from the purchase price
+                if self.purchase_price[symbol] is not None and price >= self.purchase_price[symbol] * (1 + self.profit_target_percentage):
+                    self.Liquidate(symbol)
+                    self.purchase_price[symbol] = None
+                    self.high_after_purchase[symbol] = None
+                    self.Debug(f"Sold {symbol} at {price} due to reaching the 10% profit target")
+
+    def OnEndOfDay(self):
+        # Log the current portfolio value at the end of each day
+        self.Debug(f"End of day portfolio value: {self.Portfolio.TotalPortfolioValue}")
